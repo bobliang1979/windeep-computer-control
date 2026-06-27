@@ -1,3 +1,4 @@
+# © 2026 BOBLIANG. All rights reserved.
 #!/usr/bin/env python3
 """
 compress_image.py — Progressive image compressor for computer-use screenshots.

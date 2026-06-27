@@ -1,3 +1,4 @@
+# © 2026 BOBLIANG. All rights reserved.
 """
 smart_matcher.py — Multi-strategy element matching for UIA blind spot coverage.
 

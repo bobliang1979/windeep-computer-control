@@ -1,3 +1,4 @@
+# © 2026 BOBLIANG. All rights reserved.
 """
 action_queue.py — Delay adaptation layer between Hermes (planning) and winctl (execution).
 

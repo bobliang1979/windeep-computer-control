@@ -1,3 +1,4 @@
+# © 2026 BOBLIANG. All rights reserved.
 #!/usr/bin/env python3
 """
 computer_control_enhanced.py — Enhanced computer control with bytebot-inspired patterns.

@@ -1,3 +1,4 @@
+# © 2026 BOBLIANG. All rights reserved.
 ﻿__version__ = "1.0.0"
 """windeep.scripts — Shared helper modules for computer control."""
 

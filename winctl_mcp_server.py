@@ -1,3 +1,4 @@
+# © 2026 BOBLIANG. All rights reserved.
 #!/usr/bin/env python3
 """
 winctl_mcp_server.py — MCP Server wrapping windeep's ctypes Win32 API.

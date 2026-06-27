@@ -1,3 +1,4 @@
+# © 2026 BOBLIANG. All rights reserved.
 """
 ocr_finder.py — Native Windows OCR for UIA blind spot coverage.
 

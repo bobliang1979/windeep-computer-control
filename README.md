@@ -324,4 +324,6 @@ while action := queue.next_pending():
 
 ---
 
+*© 2026 BOBLIANG. All rights reserved.*
+
 *由 [Hermes Agent](https://github.com/NousResearch/hermes-agent) × [Codex++](https://github.com/bobliang1979) 联合构建。*

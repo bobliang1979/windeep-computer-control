@@ -1,3 +1,4 @@
+# © 2026 BOBLIANG. All rights reserved.
 """
 assertion_verifier.py — Structured assertion system for UI action verification.
 

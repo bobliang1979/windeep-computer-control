@@ -1,3 +1,4 @@
+# © 2026 BOBLIANG. All rights reserved.
 """
 shared_ui_state.py — Shared UI state between Hermes and Codex++.
 

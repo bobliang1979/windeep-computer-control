@@ -1,3 +1,4 @@
+# © 2026 BOBLIANG. All rights reserved.
 """UI Tree Cache with TTL, local invalidation, and fingerprint index mapping."""
 import threading
 import time

@@ -1,3 +1,4 @@
+# © 2026 BOBLIANG. All rights reserved.
 """Element fingerprinting for stable UI element identification."""
 import hashlib
 import json
