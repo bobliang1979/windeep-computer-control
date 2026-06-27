@@ -318,6 +318,138 @@ while action := queue.next_pending():
 
 ---
 
+## 使用方法
+
+### 1. MCP 服务器模式（推荐）
+
+适合 Hermes Agent、Claude Code 等 MCP 客户端：
+
+```bash
+# 启动服务（前台运行）
+python winctl_mcp_server.py --port 59322
+
+# 注册到 Hermes
+hermes mcp add winctl --url http://127.0.0.1:59322
+
+# 调用工具
+hermes mcp call winctl list_windows
+hermes mcp call winctl screenshot
+hermes mcp call winctl smart_click '{"pid": 1234, "target_text": "提交"}'
+```
+
+### 2. CLI 命令行模式
+
+无需启动服务器，直接执行：
+
+```bash
+# 窗口管理
+python winctl_mcp_server.py list_windows
+python winctl_mcp_server.py find_windows --title-pattern "Chrome"
+python winctl_mcp_server.py get_window_info --hwnd 0x1234
+
+# 窗口控制
+python winctl_mcp_server.py focus_window --hwnd 0x1234
+python winctl_mcp_server.py close_window --hwnd 0x1234
+python winctl_mcp_server.py minimize_window --hwnd 0x1234
+
+# 输入操作
+python winctl_mcp_server.py click --hwnd 0x1234 --x 500 --y 300
+python winctl_mcp_server.py type_text --hwnd 0x1234 "hello world"
+python winctl_mcp_server.py send_keys --hwnd 0x1234 "ctrl+c"
+
+# 截图
+python winctl_mcp_server.py screenshot  # 全屏
+python winctl_mcp_server.py screenshot --hwnd 0x1234  # 指定窗口
+
+# 智能匹配
+python winctl_mcp_server.py smart_click --pid 1234 --target-text "登录"
+
+# 验证
+python winctl_mcp_server.py desktop_info
+python winctl_mcp_server.py ocr_available
+```
+
+### 3. Python API 模式
+
+```python
+# 使用增强控制库
+from computer_control_enhanced import (
+    capture, click, type_text, paste_text,
+    type_keys, scroll, drag, list_apps
+)
+
+# 截图（自动压缩至 512KB）
+result = capture(pid=1234, compress_kb=512)
+print(f"截图: {result['output_kb']:.0f}KB")
+
+# 点击（含 settle delay + 自动验证 + 指纹容错）
+result = click(pid=1234, element=7, settle_ms=750)
+print(f"点击: {result['result']}")
+
+# 智能输入（自动选择最优方式）
+type_text(pid=1234, text="hello")           # 短文本 → 逐字符
+type_text(pid=1234, text="这是一段较长的中文文本描述...", element=5)  # 长文本 → set_value
+paste_text(pid=1234, text="# 大段代码\nprint('hello')\n")  # 代码 → 剪贴板粘贴
+
+# 快捷键
+type_keys(pid=1234, keys=["ctrl", "c"])     # Ctrl+C 复制
+type_keys(pid=1234, keys=["ctrl", "v"])     # Ctrl+V 粘贴
+
+# 断言验证
+from scripts.assertion_verifier import capture_state, verify
+before = capture_state(pid=1234)
+click(pid=1234, element=7)
+after = capture_state(pid=1234)
+report = verify(before, after, [
+    ("hash_change", {}),
+    ("element_appeared", {"text": "保存成功"}),
+])
+print(f"验证通过: {report['passed']}, 置信度: {report['confidence']}")
+```
+
+### 4. 智能匹配（覆盖 UIA 盲区）
+
+使用多策略匹配，无需事先知道元素索引：
+
+```python
+from scripts.smart_matcher import smart_find, smart_click
+
+# 按文字查找元素
+match = smart_find("提交", tree=ui_tree, screenshot_b64=screenshot)
+print(f"找到: {match['method']}, 坐标: ({match['x']}, {match['y']})")
+
+# 找到即点击（一步完成）
+result = smart_click(pid=1234, target_text="登录")
+print(f"方法: {result['method']}, 成功: {result['success']}")
+```
+
+### 5. 共享状态与队列（Hermes + Codex++ 协作）
+
+```python
+from scripts.shared_ui_state import get_state
+from scripts.action_queue import ActionQueue
+
+# Hermes 端：写入共享状态
+state = get_state()
+state.update_fingerprints(elements)
+state.set_last_action({"action": "click", "success": True})
+
+# Codex++ 端：读取共享状态
+state.reload()
+fps = state.get_fingerprints()
+settle_ms = state.get_adaptive_settle("Chrome:click")
+
+# Action Queue：延迟适配
+queue = ActionQueue()
+queue.enqueue("click", {"pid": 1234, "element_index": 7})
+# winctl 执行端：
+while action := queue.next_pending():
+    result = execute(action["tool"], action["params"])
+    queue.mark_done(action["id"], result)
+```
+
+---
+
 ## 许可证
 
 [Apache 2.0](LICENSE)
