@@ -1,0 +1,29 @@
+[project]
+name = "windeep"
+version = "1.0.0"
+description = "Windows Deep Desktop Control — pure ctypes Win32 API for window management, keystroke injection, registry access, and process control. Zero external dependencies."
+authors = [{name = "Hermes Agent — WinDeep"}]
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+keywords = ["windows", "win32", "desktop", "automation", "window-management"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Win32 (MS Windows)",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: Microsoft :: Windows",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Topic :: Desktop Environment :: Window Managers",
+]
+
+[project.scripts]
+windeep = "windeep.cli_main:main"
+
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["windeep", "windeep.*"]

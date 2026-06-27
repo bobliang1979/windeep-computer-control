@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.DS_Store
+Thumbs.db
+*.jsonl
+test_*.json
+action_queue.jsonl
+shared_ui_state.json
