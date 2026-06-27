@@ -22,6 +22,7 @@ import json
 import logging
 import os
 import time
+import calendar
 from pathlib import Path
 from typing import Any, Optional
 
@@ -61,7 +62,13 @@ class SharedUIState:
             "last_action": None,
             "window_states": [],
             "cache": {},
-            "_meta": {"version": 1, "last_writer": "unknown", "updated_at": ""},
+            "energy": {
+                "level": 100.0,         # 0-100 ATP energy
+                "zone": "high",          # high | warning | coma
+                "history": [],           # last 20 action outcomes (True/False)
+                "last_failure_at": None, # ISO8601 of most recent failure
+            },
+            "_meta": {"version": 2, "last_writer": "unknown", "updated_at": ""},
         }
 
     def _save(self, writer: str = "hermes"):
@@ -141,6 +148,90 @@ class SharedUIState:
 
     def get_cache(self, key: str, default: Any = None) -> Any:
         return self._data.get("cache", {}).get(key, default)
+
+    # ── ATP Energy Model (from C19×AEON meta-cognition pattern) ──
+
+    ATP_HIGH_THRESHOLD = 70.0
+    ATP_WARNING_THRESHOLD = 30.0
+    ATP_HISTORY_SIZE = 20
+    ATP_PENALTY_WEIGHT = 100.0  # failure_rate × 100 = max penalty 100 pts
+    ATP_RECOVERY_RATE = 3.0    # minutes per recovery point (60 min = 20 pts full recovery)
+    ATP_MAX_TIME_BONUS = 20.0
+
+    def compute_energy(self, writer: str = "hermes"):
+        """Compute ATP energy level from recent failure rate and time since last failure.
+
+        Formula:
+            ATP = 100 - failure_rate × 80 + time_recovery
+            time_recovery = min(20, minutes_since_last_failure / 3)
+
+        failure_rate: fraction of False outcomes in recent window (0-1)
+        With 0 failures: 100 (high) → 20 minutes stable: 100 (still high)
+        With 50% failures: 60 (warning) → 20 minutes stable: 80 (high)
+        With 100% failures fresh: 20 (coma border) → 20min stable: 40 (warning)
+        """
+        history = self._data.setdefault("energy", {}).setdefault("history", [])
+        last_failure_at = self._data["energy"].get("last_failure_at")
+
+        # Failure rate: from recent window
+        window = self.ATP_HISTORY_SIZE
+        recent = history[-window:] if len(history) >= window else history
+        if recent:
+            failure_rate = sum(1 for r in recent if not r) / len(recent)
+        else:
+            failure_rate = 0.0
+
+        # Time recovery: minutes since last failure
+        time_since_failure = 0.0
+        if last_failure_at:
+            try:
+                last_ts = calendar.timegm(
+                    time.strptime(last_failure_at, "%Y-%m-%dT%H:%M:%SZ")
+                )
+                time_since_failure = (time.time() - last_ts) / 60.0  # minutes
+            except (ValueError, OSError):
+                pass
+        time_bonus = min(self.ATP_MAX_TIME_BONUS,
+                         time_since_failure / self.ATP_RECOVERY_RATE)
+
+        # Compute ATP
+        level = 100.0 - (failure_rate * self.ATP_PENALTY_WEIGHT) + time_bonus
+        level = max(0.0, min(100.0, level))
+
+        # Determine zone
+        if level >= self.ATP_HIGH_THRESHOLD:
+            zone = "high"
+        elif level >= self.ATP_WARNING_THRESHOLD:
+            zone = "warning"
+        else:
+            zone = "coma"
+
+        self._data["energy"]["level"] = round(level, 1)
+        self._data["energy"]["zone"] = zone
+        self._save(writer)
+        return self._data["energy"]
+
+    def record_action_outcome(self, success: bool, writer: str = "hermes"):
+        """Record whether an action succeeded or failed. Updates ATP energy."""
+        history = self._data.setdefault("energy", {}).setdefault("history", [])
+        history.append(success)
+        if len(history) > self.ATP_HISTORY_SIZE:
+            history[:] = history[-self.ATP_HISTORY_SIZE:]
+        if not success:
+            self._data["energy"]["last_failure_at"] = time.strftime(
+                "%Y-%m-%dT%H:%M:%SZ", time.gmtime()
+            )
+        return self.compute_energy(writer)
+
+    def get_energy(self) -> dict:
+        """Return current ATP energy state: level (0-100), zone, history length."""
+        eng = self._data.get("energy", {})
+        return {
+            "level": eng.get("level", 100.0),
+            "zone": eng.get("zone", "high"),
+            "history_len": len(eng.get("history", [])),
+            "last_failure_at": eng.get("last_failure_at"),
+        }
 
     # ── Raw access ──
 

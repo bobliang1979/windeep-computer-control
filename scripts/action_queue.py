@@ -93,27 +93,85 @@ class ActionQueue:
     # ── Read & Execute (winctl side) ──
 
     def next_pending(self) -> Optional[dict]:
-        """Get the next pending action (FIFO). Atomically marks it as running."""
+        """Get the next pending action (FIFO). Checks energy zone before proceeding.
+
+        In COMA zone, returns None (blocks execution) and auto-triggers COMATH.
+        In WARNING zone, adds 'streamline' flag to the action.
+        """
+        # Energy zone check
+        try:
+            from energy_regulator import get_regulator
+            reg = get_regulator()
+            proceed, reason, advice = reg.should_proceed()
+            if not proceed:
+                # Enter COMATH: attempt recovery
+                insight = reg.enter_comath()
+                logger.warning("Energy COMA: COMATH triggered. Insight: %s",
+                               insight.get("insight", {}))
+                return {"id": "__comath__", "tool": "comath",
+                        "params": {"insight": insight},
+                        "precondition": {}, "status": "running",
+                        "source": "energy_regulator"}
+        except ImportError:
+            pass
+
         entries = self._read_all()
         for e in entries:
             if e.get("status") == "pending":
                 if self._check_precondition(e.get("precondition", {})):
                     e["status"] = "running"
+                    # Attach energy advice
+                    try:
+                        _, _, advice = get_regulator().should_proceed()
+                        e["_energy_advice"] = advice
+                    except ImportError:
+                        pass
                     self._write_all(entries)
                     return e
         return None
 
     def mark_done(self, action_id: str, result: dict):
-        """Mark an action as done with result."""
+        """Mark an action as done with result. Records ATP energy success."""
         self._update_status(action_id, "done", result)
+        try:
+            from energy_regulator import get_regulator
+            get_regulator().record_and_regulate(success=True)
+        except ImportError:
+            try:
+                from scripts.shared_ui_state import get_state
+                get_state().record_action_outcome(success=True)
+            except ImportError:
+                pass
 
     def mark_failed(self, action_id: str, result: dict):
-        """Mark an action as failed."""
+        """Mark an action as failed. Records ATP energy failure."""
         self._update_status(action_id, "failed", result)
+        try:
+            from energy_regulator import get_regulator
+            reg = get_regulator()
+            status = reg.record_and_regulate(success=False)
+            if status["zone"] == "coma":
+                logger.warning("Energy entered COMA after failure. "
+                               "next_pending() will trigger COMATH.")
+        except ImportError:
+            try:
+                from scripts.shared_ui_state import get_state
+                get_state().record_action_outcome(success=False)
+            except ImportError:
+                pass
 
     def mark_escalated(self, action_id: str, result: dict):
-        """Mark an action as escalated (needs human or Codex++)."""
+        """Mark an action as escalated (needs human or Codex++). Records ATP energy failure."""
         self._update_status(action_id, "escalated", result)
+        try:
+            from energy_regulator import get_regulator
+            get_regulator().record_and_regulate(success=False)
+        except ImportError:
+            try:
+                from scripts.shared_ui_state import get_state
+                get_state().record_action_outcome(success=False)
+            except ImportError:
+                pass
 
     # ── Condition checks ──
 

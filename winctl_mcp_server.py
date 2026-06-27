@@ -342,6 +342,14 @@ TOOLS = [
             "required": ["pid", "target_text"],
         },
     },
+    {
+        "name": "get_energy",
+        "description": "Get the current ATP energy level of the control stack. Returns level (0-100), zone (high/warning/coma), action history length, and time since last failure. Energy is derived from recent failure rate via the ATP metabolic model.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {},
+        },
+    },
 ]
 
 
@@ -675,9 +683,8 @@ def handle_smart_find(args: dict) -> dict:
         last_x=args.get("last_x"),
         last_y=args.get("last_y"),
     )
-
-
 def handle_smart_click(args: dict) -> dict:
+    """Find element by text and click it."""
     from scripts.smart_matcher import smart_click
     return smart_click(
         pid=args["pid"],
@@ -685,6 +692,29 @@ def handle_smart_click(args: dict) -> dict:
         window_id=args.get("window_id", 0),
         button=args.get("button", "left"),
     )
+
+
+def handle_get_energy(args: dict) -> dict:
+    """Get ATP energy level of the control stack."""
+    try:
+        from scripts.shared_ui_state import get_state
+        state = get_state()
+        energy = state.get_energy()
+        return {
+            "energy_level": energy["level"],
+            "zone": energy["zone"],
+            "history_len": energy["history_len"],
+            "last_failure_at": energy["last_failure_at"],
+            "interpretation": (
+                "high energy: full execution with verification"
+                if energy["zone"] == "high"
+                else "warning: streamlined verify, skip screenshot diff"
+                if energy["zone"] == "warning"
+                else "coma: replay analysis of accumulated failures"
+            ),
+        }
+    except (ImportError, Exception) as e:
+        return {"error": f"ATP energy unavailable: {e}"}
 
 
 HANDLERS = {
@@ -710,6 +740,7 @@ HANDLERS = {
     "ocr_available": handle_ocr_available,
     "smart_find": handle_smart_find,
     "smart_click": handle_smart_click,
+    "get_energy": handle_get_energy,
 }
 
 
