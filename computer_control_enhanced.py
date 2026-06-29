@@ -494,12 +494,27 @@ def _fetch_tree(pid: int, window_id: int, force: bool = False,
 
 
 def _capture_window_wgc(pid: int, window_id: int) -> dict:
-    """Capture a specific window using PrintWindow API (works for occluded windows).
+    """Capture a specific window using multi-method fallback pipeline.
 
-    Uses user32.PrintWindow to render a window into a DC, even if the window
-    is occluded or partially off-screen. Falls back to BitBlt (visible content
-    only) when PrintWindow returns a blank image.
+    Methods tried in order:
+    1. DXGI Desktop Duplication (D3D11, works on Electron/DirectX)
+    2. PrintWindow (works on occluded Win32 windows)
+    3. BitBlt (visible window content)
+    4. PIL ImageGrab (full desktop fallback)
     """
+    try:
+        from scripts.dxgi_capture import capture_window_fallback
+        hwnd = window_id or 0
+        result = capture_window_fallback(hwnd)
+        if "error" not in result:
+            return result
+        # Fall through to original PrintWindow logic
+    except ImportError:
+        pass
+    except Exception:
+        pass
+
+    # Original PrintWindow + BitBlt logic
     try:
         import ctypes
         from ctypes import wintypes
