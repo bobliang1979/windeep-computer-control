@@ -26,6 +26,7 @@ import os
 import re
 import sys
 import time
+from contextlib import contextmanager
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from socketserver import ThreadingMixIn
 from typing import Any, Optional
@@ -34,6 +35,7 @@ from typing import Any, Optional
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _THIS_DIR)
 
+from scripts.clipboard_guard import clipboard_paste_text, try_wm_settext
 from scripts.element_fingerprint import element_fingerprint, get_elements
 try:
     from scripts.assertion_verifier import verify, capture_state
@@ -413,41 +415,13 @@ def handle_type_text(args: dict) -> dict:
 
 
 def handle_paste_text(args: dict) -> dict:
-    """Paste via clipboard. Uses Win32 clipboard API + Ctrl+V."""
-    import ctypes
+    """Paste via clipboard. Uses shared clipboard_guard for safe multi-format handling.
+
+    Strategy: WM_SETTEXT (zero clipboard) -> clipboard_guard() + Ctrl+V.
+    """
     hwnd = _hwnd_to_int(args["hwnd"])
     text = args["text"]
-
-    try:
-        # Open clipboard, set text, close
-        user32 = ctypes.windll.user32
-        kernel32 = ctypes.windll.kernel32
-
-        if not user32.OpenClipboard(None):
-            # fallback to type_text
-            return handle_type_text(args)
-
-        user32.EmptyClipboard()
-        # Allocate global memory for the text
-        w_text = (text + "\0").encode("utf-16-le")
-        h_mem = kernel32.GlobalAlloc(0x2002, len(w_text))  # GMEM_MOVEABLE | GMEM_ZEROINIT
-        if h_mem:
-            p_mem = kernel32.GlobalLock(h_mem)
-            ctypes.memmove(p_mem, w_text, len(w_text))
-            kernel32.GlobalUnlock(h_mem)
-            user32.SetClipboardData(13, h_mem)  # CF_UNICODETEXT
-        user32.CloseClipboard()
-        time.sleep(0.05)
-
-        # Send Ctrl+V (via PostMessage)
-        user32.PostMessageW(hwnd, 0x0100, 0x11, 0)  # WM_KEYDOWN Ctrl
-        user32.PostMessageW(hwnd, 0x0100, 0x56, 0)  # WM_KEYDOWN V
-        user32.PostMessageW(hwnd, 0x0101, 0x56, 0)  # WM_KEYUP V
-        user32.PostMessageW(hwnd, 0x0101, 0x11, 0)  # WM_KEYUP Ctrl
-
-        return {"success": True, "hwnd": hwnd, "length": len(text), "method": "clipboard"}
-    except Exception as e:
-        return {"success": False, "error": str(e), "fallback": "type_text"}
+    return clipboard_paste_text(hwnd, text)
 
 
 def handle_send_keys(args: dict) -> dict:

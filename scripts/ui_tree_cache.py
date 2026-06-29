@@ -33,9 +33,38 @@ class UiTreeCache:
             self._fingerprints = fingerprint_index_map(self._elements)
             self._timestamp = time.monotonic()
 
-    def get_element_index(self, fingerprint: str) -> Optional[int]:
+    def get_element_index(self, fingerprint: str,
+                          old_element: dict = None) -> Optional[int]:
+        """Find element by fingerprint. Falls back to resilient matching on miss.
+
+        Args:
+            fingerprint: SHA-256 fingerprint string (exact match).
+            old_element: Optional full element dict for resilient fallback
+                         matching when exact SHA-256 fails.
+        """
         with self._lock:
-            return self._fingerprints.get(fingerprint)
+            # 1) Exact SHA-256 match (fast path)
+            idx = self._fingerprints.get(fingerprint)
+            if idx is not None:
+                return idx
+
+        # 2) Resilient weighted matching (fallback)
+        if old_element is not None:
+            try:
+                from scripts.resilient_matcher import find_best_match, extract_fingerprint
+                with self._lock:
+                    candidates = list(self._elements)
+                if not candidates:
+                    return None
+                query_fp = extract_fingerprint(old_element)
+                result_idx, score = find_best_match(query_fp, candidates)
+                if result_idx is not None and score >= 0.6:
+                    with self._lock:
+                        self._fingerprints[fingerprint] = result_idx
+                    return result_idx
+            except ImportError:
+                pass
+        return None
 
     def get_element_by_fingerprint(self, fingerprint: str) -> Optional[dict]:
         with self._lock:

@@ -464,7 +464,7 @@ def send_keys(hwnd: int, text: str) -> bool:
 
     # Set window text directly
     buf = ctypes.create_unicode_buffer(text)
-    _Win32.user32.SendMessageW(hwnd, _WM_SETTEXT, 0, ctypes.addressof(buf))
+    _Win32.user32.SendMessageW(hwnd, _WM_SETTEXT, 1, ctypes.addressof(buf))
     return True
 
 

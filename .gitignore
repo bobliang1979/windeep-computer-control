@@ -8,3 +8,6 @@ Thumbs.db
 test_*.json
 action_queue.jsonl
 shared_ui_state.json
+
+# Cross-session UI layout cache
+scripts/.layout_knowledge/
