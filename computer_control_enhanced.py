@@ -398,6 +398,25 @@ def _verifier_loop():
                     "settled_ms": settle_ms,
                 }
 
+            if passed:
+                # ── Persist success path to layout knowledge ──
+                try:
+                    success_path = task.get("success_path", [])
+                    if success_path:
+                        from scripts.layout_knowledge import get_layout_knowledge
+                        db = get_layout_knowledge()
+                        # Re-fetch current window info for keying
+                        win_info = result.get("window", {})
+                        pn = win_info.get("process_name", "") or ""
+                        wt = win_info.get("title", "") or ""
+                        wc = win_info.get("class_name", "") or ""
+                        if pn and wc:
+                            elements = result.get("elements", []) or []
+                            db.learn(pn, wt, wc, elements,
+                                     success_path=success_path)
+                except Exception:
+                    pass  # Non-critical; logging failure never blocks verify
+
             if not passed:
                 _record_route_failure("verify", "async",
                                       "; ".join(issues))

@@ -112,7 +112,8 @@ class LayoutKnowledge:
         """Look up a known layout.
 
         Returns the full stored entry dict (with 'elements', 'title',
-        'class', 'process', 'learned_at') if a sufficiently similar
+        'class', 'process', 'learned_at', and optionally
+        'last_success_path') if a sufficiently similar
         layout exists, None otherwise.
 
         Match priority:
@@ -146,7 +147,8 @@ class LayoutKnowledge:
 
     def learn(self, process_name: str, window_title: str,
               window_class: str, elements: list,
-              fingerprint_map: dict = None):
+              fingerprint_map: dict = None,
+              success_path: list = None):
         """Learn a layout from captured elements.
 
         Args:
@@ -155,6 +157,8 @@ class LayoutKnowledge:
             window_class: UIA class name, e.g. "Chrome_WidgetWin_1"
             elements: List of element dicts from get_window_state
             fingerprint_map: Dict of {element_index: fingerprint}
+            success_path: Optional list of action strings that
+                          successfully targeted this window layout
         """
         key = self._make_key(process_name, window_class)
         now = time.time()
@@ -168,6 +172,7 @@ class LayoutKnowledge:
                 "element_count": len(elements) if elements else 0,
                 "elements": elements,
                 "fingerprints": fingerprint_map or {},
+                "last_success_path": success_path or [],
             }
             self._dirty = True
 
