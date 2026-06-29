@@ -421,6 +421,14 @@ def _verifier_loop():
             if not passed:
                 _record_route_failure("verify", "async",
                                       "; ".join(issues))
+                # ── Rollback: dismiss dialogs, retry from previous step ──
+                try:
+                    from scripts.sendinput import send_hotkey
+                    send_hotkey(["esc"], "esc")      # Close any dialog
+                    if "missing" in "; ".join(issues):
+                        time.sleep(0.3)  # Wait for dialog to close
+                except Exception:
+                    pass
         except Exception:
             pass  # Worker never crashes
 
@@ -1059,12 +1067,41 @@ def _ensure_electron_accessibility(pid: int, elements: list = None) -> bool:
         if not hwnd:
             return False
 
-        result = activate_electron_accessibility(hwnd)
-        if result:
-            time.sleep(1.0)  # Wait for UIA tree to build
-        return result
+        # WM_GETOBJECT verified ineffective for Runtime activation (2026-06-29)
+        _relaunch_electron_with_a11y(pid, title)
+        print(f"[electron_a11y] relaunched pid {pid} with a11y flag")
+        return True
     except Exception:
         return False
+
+
+def _relaunch_electron_with_a11y(pid: int, title: str):
+    """Kill and relaunch Electron app with --force-renderer-accessibility."""
+    import subprocess, os, time
+    try:
+        r = subprocess.run(
+            ['wmic', 'process', 'where', f'ProcessId={pid}',
+             'get', 'ExecutablePath', '/format:value'],
+            capture_output=True, text=True, timeout=5
+        )
+        path = ""
+        for line in r.stdout.splitlines():
+            if "ExecutablePath=" in line:
+                path = line.split("=", 1)[1].strip()
+                break
+        if not path or not os.path.exists(path):
+            return
+        if os.path.basename(path).lower() not in _ELECTRON_APPS:
+            return
+        subprocess.run(['taskkill', '/f', '/pid', str(pid)],
+                       capture_output=True, timeout=5)
+        time.sleep(0.5)
+        subprocess.Popen(
+            [path, '--force-renderer-accessibility'],
+            creationflags=subprocess.DETACHED_PROCESS
+        )
+    except Exception:
+        pass
 
 
 def launch_app(path_or_name: str, args: str = "",
