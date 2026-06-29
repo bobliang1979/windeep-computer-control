@@ -30,6 +30,13 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Optional
 
+# SendInput (real keystrokes for XAML/UWP/SPA where PostMessage fails)
+try:
+    from scripts.sendinput import send_click as _si_click, send_type_text as _si_type
+    HAS_SENDINPUT = True
+except ImportError:
+    HAS_SENDINPUT = False
+
 # ---- Modular components (Codex++ created) ----
 SCRIPTS_DIR = Path(__file__).parent / "scripts"
 sys.path.insert(0, str(SCRIPTS_DIR.parent))  # so 'from scripts.X' works
