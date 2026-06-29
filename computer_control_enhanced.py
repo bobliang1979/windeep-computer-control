@@ -68,6 +68,7 @@ MAX_RETRIES = 2
 MCP_HTTP_PORT = 59321
 _MCP_UIA_PORT = 59323  # cua-driver-uia.exe MCP endpoint (for High IL windows)
 SETTLE_HISTORY: dict[str, list[float]] = {}
+_last_capture_context: dict[str, dict] = {}  # pid → {process_name, class_name}
 
 # ---- Global cache instance ----
 _ui_cache = UiTreeCache(ttl_ms=2000) if HAS_MODULES else None
@@ -691,6 +692,9 @@ def capture(pid: int = 0, window_id: int = 0, compress_kb: float = None,
                 if pn and wc:
                     db = get_layout_knowledge()
                     db.learn(pn, wt, wc, elements)
+                    _last_capture_context[str(pid)] = {
+                        "process_name": pn, "class_name": wc
+                    }
         except Exception:
             pass  # Non-critical; learning failure never breaks capture
 
@@ -711,6 +715,26 @@ def click(pid: int, element: int = None, x: int = None, y: int = None,
     skip_shot = energy.get("skip_screenshot", False)
     if settle_ms is None:
         settle_ms = _adaptive_settle(pid, "click")
+
+    # ── Check if layout_knowledge has a success_path for this window ──
+    path_bonus = 0  # settle reduction (ms) when following known-good path
+    try:
+        from scripts.layout_knowledge import get_layout_knowledge
+        db = get_layout_knowledge()
+        ctx = _last_capture_context.get(str(pid), {})
+        pn = ctx.get("process_name", "") or ""
+        wc = ctx.get("class_name", "") or ""
+        if pn and wc:
+            entry = db.lookup(pn, "", wc)
+            if entry and entry.get("last_success_path"):
+                action_str = f"click({element})" if element is not None else f"click({x},{y})"
+                if action_str in entry["last_success_path"]:
+                    path_bonus = 200
+    except Exception:
+        pass
+
+    # Apply path bonus: known-good path → shorter settle
+    effective_settle = max(settle_ms - path_bonus, 50)
 
     for attempt in range(retry + 1):
         params = {"pid": pid, "button": button}
