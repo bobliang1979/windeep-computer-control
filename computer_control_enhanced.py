@@ -421,12 +421,31 @@ def _verifier_loop():
             if not passed:
                 _record_route_failure("verify", "async",
                                       "; ".join(issues))
-                # ── Rollback: dismiss dialogs, retry from previous step ──
+                # ── Rollback: dismiss dialogs with ESC key ──
                 try:
-                    from scripts.sendinput import send_hotkey
-                    send_hotkey(["esc"], "esc")      # Close any dialog
-                    if "missing" in "; ".join(issues):
-                        time.sleep(0.3)  # Wait for dialog to close
+                    from scripts.sendinput import send_click
+                    # Use a direct keybd event for ESC (not hotkey which needs modifiers)
+                    import ctypes
+                    from ctypes import wintypes
+                    user32 = ctypes.windll.user32
+                    esc_vk = 0x1B
+                    scan = user32.MapVirtualKeyW(esc_vk, 0)
+                    # Press and release ESC using SendInput directly
+                    inp_type = ctypes.c_ulong  # INPUT_KEYBOARD = 1
+                    # Build minimal INPUT structs inline
+                    PUL = ctypes.POINTER(ctypes.c_ulong)
+                    class KI(ctypes.Structure):
+                        _fields_ = [("wVk", wintypes.WORD), ("wScan", wintypes.WORD),
+                                    ("dwFlags", ctypes.c_ulong), ("time", ctypes.c_ulong),
+                                    ("dwExtraInfo", PUL)]
+                    class UI(ctypes.Union):
+                        _fields_ = [("ki", KI)]
+                    class INP(ctypes.Structure):
+                        _fields_ = [("type", ctypes.c_ulong), ("union", UI)]
+                    arr = (INP * 2)()
+                    arr[0].type = 1; arr[0].union.ki = KI(esc_vk, scan, 0, 0, None)     # Keydown
+                    arr[1].type = 1; arr[1].union.ki = KI(esc_vk, scan, 2, 0, None)     # Keyup
+                    user32.SendInput(2, arr, ctypes.sizeof(INP))
                 except Exception:
                     pass
         except Exception:
@@ -569,49 +588,41 @@ def _capture_window_wgc(pid: int, window_id: int) -> dict:
 
         PW_CLIENTONLY = 1
         pw_result = user32.PrintWindow(window_id, mem_dc, PW_CLIENTONLY)
-
-        # Cleanup
         gdi32.SelectObject(mem_dc, old)
-        gdi32.DeleteDC(mem_dc)
-        user32.ReleaseDC(0, hdc)
 
         if pw_result:
-            # Convert HBITMAP to PIL Image via save to file
-            from PIL import Image
-            import io
-            
-            # Get bitmap info
+            # Read pixels from HBITMAP
             bpp = 32
             stride = (w * bpp + 31) // 32 * 4
             bmp_data = ctypes.create_string_buffer(stride * h)
-            
+
             bmi = ctypes.create_string_buffer(40)
             ctypes.memset(bmi, 0, 40)
             ctypes.cast(bmi, ctypes.POINTER(ctypes.c_uint32))[0] = 40
             ctypes.cast(bmi, ctypes.POINTER(ctypes.c_uint32))[4] = w
             ctypes.cast(bmi, ctypes.POINTER(ctypes.c_uint32))[8] = h
-            ctypes.cast(bmi, ctypes.POINTER(ctypes.c_uint16))[12] = 1  # planes
-            ctypes.cast(bmi, ctypes.POINTER(ctypes.c_uint16))[14] = bpp  # bpp
-            
+            ctypes.cast(bmi, ctypes.POINTER(ctypes.c_uint16))[12] = 1
+            ctypes.cast(bmi, ctypes.POINTER(ctypes.c_uint16))[14] = bpp
+
             lines = gdi32.GetDIBits(mem_dc, bitmap, 0, h, bmp_data, bmi, 0)
             gdi32.DeleteObject(bitmap)
-            
+            gdi32.DeleteDC(mem_dc)
+            user32.ReleaseDC(0, hdc)
+
             if lines and lines > 0:
                 img = Image.frombuffer("RGBA", (w, h), bmp_data, "raw", "BGRA", stride)
-                # Check if blank
-                ext = img.getextrema() if hasattr(img, 'getextrema') else None
-                if ext is None or not (ext[0][0] > 240 and ext[1][0] < 15):
+                ext = img.getextrema()
+                if not (ext[0][0] > 240 and ext[1][0] < 15):
                     buf = io.BytesIO()
                     img.save(buf, format="PNG")
                     b64 = base64.b64encode(buf.getvalue()).decode()
-                    gdi32.DeleteDC(mem_dc)
-                    user32.ReleaseDC(0, hdc)
                     return {"base64": b64, "format": "png",
                             "width": w, "height": h,
-                            "input_kb": round(len(buf.getvalue()) / 1024, 1),
                             "method": "printwindow"}
-            else:
-                gdi32.DeleteObject(bitmap)
+        else:
+            gdi32.DeleteObject(bitmap)
+            gdi32.DeleteDC(mem_dc)
+            user32.ReleaseDC(0, hdc)
 
         # Method 2: PrintWindow didn't work or was blank, try direct desktop capture
         # Use mss for multi-monitor support
